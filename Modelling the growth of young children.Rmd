@@ -1,0 +1,265 @@
+---
+title: "Modelling the Growth of Young Children - Project 1"
+author: "Lixia Li"
+output:
+  pdf_document: default
+  word_document: default
+number_sections: yes
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA, message = FALSE, warning = FALSE)
+```
+
+```{r packages}
+library(kableExtra)
+library(gridExtra)
+library(plotly)
+library(ggplot2)
+library(mgcv)
+library(tinytex)
+library(equatiomatic)
+library(gapminder)
+library(dplyr)
+library(moderndive)
+library(skimr)
+library(tidyr)
+```
+
+```{r, echo=FALSE}
+#read the data
+data=read.csv("smocc.csv")
+#remove NA data
+data<-na.omit(data)
+#handle variables
+data$subjid <- as.factor(data$subjid)
+data$rec <- as.numeric(data$rec)
+data$nrec <- as.numeric(data$nrec)
+data$agedays <- as.numeric(data$agedays)
+data$sex <- as.factor(data$sex)
+data$ga <- as.numeric(data$ga)
+data$bw <- as.numeric(data$bw)
+data$htcm <- as.numeric(data$htcm)
+data$wtkg <- as.numeric(data$wtkg)
+#calculate Z-scores weight 
+data$wtkg_z_scores <- (data$wtkg-mean(data$wtkg))/sd(data$wtkg)
+```
+
+# Introduction 
+This work takes longitudinal weight measurements for 1933 children from across the Netherlands as the research object and uses linear regression model, generalized additive model and generalized additive mixed model as the research methods. Firstly, the relevant statistical characteristics of infant weight are analyzed. Secondly, a simple linear regression model is constructed. Thirdly, using a generalized additive model to obtain non linear details. Fourthly, aiming at removing autocorrelation of residuals, this article has developed a generalized additive mixed model that adds new constraints to error terms. Finally, the fitting performance of different models can be compared by the Akaike information criterion and Bayesian information criterion. The result shows that choosing the generalized additive mixed model with Z-scores is helpful for people to reasonably detect significant variables, so as to achieve the goal of predicting children's weight.
+
+# Data Description
+
+```{r,echo=FALSE}
+#Data summary
+data %>%
+  select(agedays,ga,bw,wtkg)%>%
+               summary() %>%
+               kable(caption = 'Summary statistics of interested variables') %>%
+               kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r,echo=FALSE}
+#Correlation
+data %>%
+   select(agedays,ga,bw,wtkg)%>%
+  cor()%>%
+  kable(caption = 'Correlation of interested variables') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r,echo=FALSE}
+#Plot of all data
+plot1=ggplot(data, aes(x = agedays, y = wtkg)) +
+  geom_point() +
+  labs(x = "Agedays", y = "Weight (kg)",title = "Relationship between the age of the child in days and weight measurement in kg") +
+  geom_smooth(method = "lm", se = FALSE)
+
+plot2=ggplot(data, aes(x =ga , y = wtkg)) +
+  geom_point() +
+  labs(x = "Gestational age", y = "Weight (kg)",title = "Relationship between the gestational age of the child in days and weight measurement in kg") +       
+  geom_smooth(method = "lm", se = FALSE)
+
+plot3=ggplot(data, aes(x =bw , y = wtkg)) +
+  geom_point() +
+  labs(x = "Birth Weight (g)", y = "Weight (kg)",title = "Relationship between birth weight in gram and weight measurement in kg") +      
+  geom_smooth(method = "lm", se = FALSE)
+
+grid.arrange(plot1, plot2,plot3, ncol=3)
+```
+
+```{r,echo = FALSE}
+data1=data[c(1:186), ]
+```
+
+```{r,echo = FALSE}
+#Plot of subset data
+ggplot(data1, aes(agedays, wtkg,colour=subjid)) + 
+  geom_line() + 
+  geom_point() +
+  labs(x = "Agedays", y = "Weight (kg)",title = "Relationship between agedays and weight") +
+  theme(plot.title = element_text(size=7))+ theme_minimal() + theme(legend.position = "top")
+
+ggplot(data1, aes(ga, wtkg,colour=subjid)) + 
+  geom_line() + 
+  geom_point() +
+  labs(x = "Gestational age", y = "Weight (kg)",title = "Relationship between  gestational age and weight") +
+  theme(plot.title = element_text(size=7))+ theme_minimal() + theme(legend.position = "top")
+
+ggplot(data1, aes(bw, wtkg,colour=subjid)) + 
+  geom_line() + 
+  geom_point() +
+  labs(x = " Birth Weight (g)", y = "Weight (kg)",title = "Relationship between  Birth weight and weight") +
+  theme(plot.title = element_text(size=7))+ theme_minimal() + theme(legend.position = "top")
+
+```
+
+
+# Linear Regression Model
+
+```{r,echo = FALSE}
+# LR
+model1 <- lm(wtkg~agedays+sex+ga+bw, data=data)
+equatiomatic::extract_eq(model1,use_coefs = TRUE)
+summary(model1)
+```
+
+```{r,echo = FALSE}
+table3<-get_regression_table(model1)
+table3 %>%
+  dplyr::select(term,estimate, lower_ci, upper_ci, p_value) %>%
+  kable(caption = ' Estimates of the parameters from the fitted linear regression model 1',col.names = c("Term", "Estimate", "CI Lower Bound",   "CI Upper Bound", "p value"),align=rep('c', 5)) %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r, echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE}
+regression.points <- get_regression_points(model1)
+```
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against agedays:
+plot5=ggplot(regression.points, aes(x = agedays, y = residual)) +
+  geom_point() +
+  labs(x = "agedays", y = "Residual", title = "Residuals vs The age of the child in days")  +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against ga:
+plot6=ggplot(regression.points, aes(x =sex, y = residual)) +
+  geom_point() +
+  labs(x = "sex", y = "Residual", title = "Residuals vs The sex of the child") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against ga:
+plot7=ggplot(regression.points, aes(x = ga, y = residual)) +
+  geom_point() +
+  labs(x = "ga", y = "Residual", title = "Residuals vs The gestational age of the child in days") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against bw:
+plot8=ggplot(regression.points, aes(x = bw, y = residual)) +
+  geom_point() +
+  labs(x = "bw", y = "Residual", title = "Residuals vs Birth weight in grams") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against fitted values:
+plot9=ggplot(regression.points, aes(x = wtkg_hat, y = residual)) +
+  geom_point() +
+  labs(x = "Fitted values", y = "Residual", title = "Residuals vs Fitted values") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+# check if the residuals are normally distributed:
+plot10=ggplot(regression.points, aes(x = residual)) +
+  geom_histogram(color = "white") +
+  labs(x = "Residual")
+```
+
+```{r,echo=FALSE}
+grid.arrange(plot5, plot6, plot7, plot8, plot9, plot10, ncol=3)
+```
+
+```{r,echo = FALSE}
+# Plot of observed and predicted values
+plot(predict(model1), data$wtkg,xlab = "Predicted Values",ylab = "Observed Values")
+abline(a = 0, b = 1, col = "red",lwd = 2)
+```
+
+# Generalized Additive Model
+
+```{r, echo = FALSE}
+#GAM
+model2<-gam(wtkg~s(agedays)+s(bw)+sex+s(ga),data=data)
+summary(model2)
+```
+
+
+```{r,echo = FALSE}
+# Partial effects 
+plot(model2, pages = 1, all.terms = TRUE)
+```
+
+```{r, echo = FALSE}
+# Diagnostic Plot
+layout(matrix(1:4, ncol = 2))
+gam.check(model2)
+```
+
+
+# Generalized Additive Mixed Model
+
+```{r, echo = FALSE}
+# GAMM
+model3<-gamm(wtkg~s(agedays)+s(bw)+s(ga)+sex,data=data,correlation = corARMA(p=1,q=0))
+summary(model3$lme)
+```
+
+
+```{r, echo = FALSE}
+layout(matrix(1:2, ncol = 2))
+acf(resid(model3$lme,type="normalized"),main="")
+pacf(resid(model3$lme,type="normalized"),main="")
+```
+# Z-scores and AIC/BIC
+
+```{r, echo = FALSE}
+# LR for z_scores
+model4<- lm(wtkg_z_scores~agedays+bw+sex+ga, data=data)
+equatiomatic::extract_eq(model1,use_coefs = TRUE)
+summary(model4)
+```
+
+
+```{r,echo = FALSE}
+# GAM for z_scores
+model5=gam(wtkg_z_scores~s(agedays)+s(bw)+s(ga)+sex,data=data)
+```
+
+```{r,echo = FALSE}
+# GAMM for z_scores
+model6=gamm(wtkg_z_scores~s(agedays)+s(bw)+s(ga)+sex,data=data,correlation = corARMA(p=1,q=0))
+```
+
+```{r, echo = FALSE}
+# Model comparison
+LR=model1
+GAM=model2
+GAMM=model3$lme
+LRzscores=model4
+GAMzscores=model5
+GAMMzscores=model6$lme
+AIC(LR,GAM,GAMM,LRzscores,GAMzscores,GAMMzscores)
+BIC(LR,GAM,GAMM,LRzscores,GAMzscores,GAMMzscores)
+```
+
+# Conclusion
+The major achievement of this study was how to choose the most suitable model to predict weight gain in children. In order to achieve this target, linear regression model, generalized additive model and generalized additive mixed model were developed. Then this article constructed Z-scores data to substitute raw data. By comparing with the AIC and BIC, the generalized additive mixed model with Z-scores is the best fit model. In addition, this article also found that all explanatory variables have the significant impact on the subsequent growth in infant.
+
