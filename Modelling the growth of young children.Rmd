@@ -145,7 +145,7 @@ plot5=ggplot(regression.points, aes(x = agedays, y = residual)) +
 ```
 
 ```{r, echo = FALSE,fig.height=4,fig.width=7}
-# scatterplot of the residuals against ga:
+# scatterplot of the residuals against sex:
 plot6=ggplot(regression.points, aes(x =sex, y = residual)) +
   geom_point() +
   labs(x = "sex", y = "Residual", title = "Residuals vs The sex of the child") +
